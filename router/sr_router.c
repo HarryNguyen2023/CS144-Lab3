@@ -144,8 +144,9 @@ void sr_handlepacket(struct sr_instance* sr,
     ip_hdr->ip_sum = ip_hdr_cksum;
 
     /* Verify if the TTL field is 0 */
-    if(ip_hdr->ip_ttl == 0)
+    if(ip_hdr->ip_ttl == 1)
     {
+      printf("Packet TTL expired!\n");
       /* Get the MAC address of the IP datagram that cause TTL expired */
       sr_ethernet_hdr_t *eth_hdr = (sr_ethernet_hdr_t *)packet;
       /* Send ICMP type 11 code 0 */
@@ -252,7 +253,6 @@ void sr_icmp_t3_create(sr_icmp_t3_hdr_t * icmp_t3_segment, uint8_t* ip_datagram,
   /* Verify the input condition */
   if(icmp_t3_segment == NULL || ip_datagram == NULL)
     return;
-
   /* Fill the ICMP data segment */
   icmp_t3_segment->icmp_type = icmp_type;
   icmp_t3_segment->icmp_code = icmp_code;
@@ -407,7 +407,16 @@ void sr_icmp_send(struct sr_instance *sr, uint8_t *dest_mac_addr, uint8_t *ip_da
   sr_ip_hdr_t *rcv_ip_hdr = (sr_ip_hdr_t *)ip_datagram;
   uint32_t dest_send_ip_addr = rcv_ip_hdr->ip_src;
   /* Get the IP address of the received interface of the router */
-  uint32_t src_send_ip_addr = rcv_ip_hdr->ip_dst;
+  struct sr_if *rcv_if = sr_get_interface(sr, iface);
+  uint32_t src_send_ip_addr;
+  if(icmp_type == 11)
+  {
+    src_send_ip_addr = rcv_if->ip;
+  }
+  else
+  {
+    src_send_ip_addr = rcv_ip_hdr->ip_dst;
+  }
   sr_ip_create(send_ip_datagram, (uint8_t *)icmp_segment, icmp_hdr_len, (uint8_t)ip_protocol_icmp, src_send_ip_addr, dest_send_ip_addr);
 
   /* Create the Ethernet frame to contains the above IP and ICMP segments */
@@ -417,7 +426,6 @@ void sr_icmp_send(struct sr_instance *sr, uint8_t *dest_mac_addr, uint8_t *ip_da
     printf( "Error: Unable to create the Ethernet packet!\n");
     return;
   }
-  struct sr_if *rcv_if = sr_get_interface(sr, iface);
   uint8_t eth_src_mac_addr[ETHER_ADDR_LEN];
   memcpy(eth_src_mac_addr, rcv_if->addr, ETHER_ADDR_LEN);
   sr_ethernet_create(ethernet_packet, (uint8_t *)send_ip_datagram, sizeof(sr_ip_hdr_t) + icmp_hdr_len, eth_src_mac_addr, dest_mac_addr, ethertype_ip);
